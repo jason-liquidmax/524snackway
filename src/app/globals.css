@@ -1,0 +1,8 @@
+@import "tailwindcss";
+
+@theme inline {
+  --color-paradigm: #00e100;
+  --color-black: #000000;
+  --color-white: #ffffff;
+  --font-mono: var(--font-geist-mono);
+}

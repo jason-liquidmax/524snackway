@@ -7,11 +7,22 @@ import {
   ArrowUpIcon,
   ChatBubbleIcon,
   CircleBackslashIcon,
+  CookieIcon,
+  Crosshair2Icon,
   EyeOpenIcon,
   InputIcon,
+  MagnifyingGlassIcon,
   StarIcon,
   UpdateIcon,
 } from "@radix-ui/react-icons";
+function DrinkIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} width="15" height="15" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <path d="M3 2H12L11 13H4L3 2Z" stroke="currentColor" strokeLinejoin="round" />
+      <path d="M3.25 4.5H11.75" stroke="currentColor" strokeLinecap="round" />
+    </svg>
+  );
+}
 
 function CursorArrowFilled() {
   return (
@@ -24,6 +35,8 @@ import HoverTooltip from "./components/HoverTooltip";
 
 import VoteCursor from "./components/VoteCursor";
 import CommentCursor from "./components/CommentCursor";
+import { useAuth } from "@/lib/auth/store";
+import { signInWithTelegram } from "@/lib/auth/telegramClient";
 
 type Mode = "SELECT" | "VOTE" | "COMMENT";
 
@@ -133,6 +146,25 @@ function ThickDown({ filled = true }: { filled?: boolean } = {}) {
   );
 }
 
+function SortAscIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M2 4H8" stroke="currentColor" strokeLinecap="round" />
+      <path d="M2 7.5H10" stroke="currentColor" strokeLinecap="round" />
+      <path d="M2 11H13" stroke="currentColor" strokeLinecap="round" />
+    </svg>
+  );
+}
+function SortDescIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M2 4H13" stroke="currentColor" strokeLinecap="round" />
+      <path d="M2 7.5H10" stroke="currentColor" strokeLinecap="round" />
+      <path d="M2 11H8" stroke="currentColor" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 const placeholderImages = [
   "/snacks/BBQ-v1.png",
   "/snacks/Front-v1.png",
@@ -209,7 +241,15 @@ const items: Item[] = [
 export default function Home() {
   const [mode, setMode] = useState<Mode>("SELECT");
   const [hungerGames, setHungerGames] = useState(false);
-  const [authed, setAuthed] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [sortMetric, setSortMetric] = useState<"favorites" | "upvotes" | "downvotes" | "comments">("upvotes");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+  const [typeFilter, setTypeFilter] = useState<"all" | ItemType>("all");
+  const authStatus = useAuth((s) => s.status);
+  const authUser = useAuth((s) => s.user);
+  const signOut = useAuth((s) => s.signOut);
+  const authed = authStatus === "authed";
+  const [authBusy, setAuthBusy] = useState(false);
   const [selected, setSelected] = useState<number | null>(null);
   const [lastAction, setLastAction] = useState<{ icon: React.ReactNode; text: string } | null>(null);
   const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
@@ -498,12 +538,31 @@ export default function Home() {
               Comment <span className="opacity-60">[C]</span>
             </DashedButton>
           </HoverTooltip>
-          <HoverTooltip label={authed ? "Authenticated with Telegram" : "Sign in with Telegram"}>
+          <HoverTooltip
+            label={
+              authed
+                ? `Signed in${authUser?.telegramUsername ? ` as @${authUser.telegramUsername}` : ""} — click to sign out`
+                : "Sign in with Telegram"
+            }
+          >
             <button
               type="button"
-              onClick={() => setAuthed((v) => !v)}
+              disabled={authBusy}
+              onClick={async () => {
+                if (authBusy) return;
+                setAuthBusy(true);
+                try {
+                  if (authed) {
+                    await signOut();
+                  } else {
+                    await signInWithTelegram();
+                  }
+                } finally {
+                  setAuthBusy(false);
+                }
+              }}
               aria-label={authed ? "Authenticated" : "Not authenticated"}
-              className={`relative flex h-[26px] w-[26px] cursor-pointer items-center justify-center ${authed ? "" : "marching-border"}`}
+              className={`relative flex h-[26px] w-[26px] cursor-pointer items-center justify-center ${authed ? "" : "marching-border"} ${authBusy ? "opacity-60" : ""}`}
             >
               {authed ? (
                 <span className="pointer-events-none absolute inset-0 border border-paradigm" />
@@ -519,9 +578,105 @@ export default function Home() {
       </header>
       <div className="flex flex-1">
       <div className="w-3/4">
-        <div aria-hidden="true" className="h-20 border-r-[0.5px] border-b-[0.5px] border-paradigm" />
+        <div className="flex h-10 border-r-[0.5px] border-paradigm">
+          <div className="flex w-[87.5%] h-full items-center px-4 gap-3">
+            <MagnifyingGlassIcon className={`h-[18px] w-[18px] shrink-0 ${(() => { const q = searchQuery.trim().toLowerCase(); if (!q) return "text-black"; return items.some((it) => it.name.toLowerCase().includes(q) || it.type.toLowerCase().includes(q)) ? "text-paradigm" : "text-black"; })()}`} style={{ transform: "scaleX(-1)" }} />
+            <input
+              type="text"
+              placeholder="Search"
+              value={searchQuery}
+              onChange={(e) => {
+                const v = e.target.value;
+                setSearchQuery(v);
+                if (!v) return;
+                const q = v.trim().toLowerCase();
+                const count = items.filter((it) => it.name.toLowerCase().includes(q) || it.type.toLowerCase().includes(q)).length;
+                if (count > 0) setLastAction({ icon: <Crosshair2Icon />, text: `FOUND ${count} RESULT${count === 1 ? "" : "S"}` });
+                else setLastAction({ icon: <InputIcon />, text: "ESC TO CLEAR INPUT" });
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Escape") {
+                  setSearchQuery("");
+                  setLastAction({ icon: <CircleBackslashIcon />, text: "QUIT TYPING" });
+                  (e.currentTarget as HTMLInputElement).blur();
+                }
+              }}
+              className="font-grotesk h-full w-full bg-transparent outline-none border-none text-lg"
+            />
+          </div>
+          <div className="w-[12.5%] h-full grid grid-cols-3">
+            <HoverTooltip label={`Sort by ${sortMetric}`}>
+              <button
+                type="button"
+                onClick={() => {
+                  const order: typeof sortMetric[] = ["favorites", "upvotes", "downvotes", "comments"];
+                  const next = order[(order.indexOf(sortMetric) + 1) % order.length];
+                  setSortMetric(next);
+                  setLastAction({ icon: <UpdateIcon />, text: `SORTING BY ${next.toUpperCase()}` });
+                }}
+                className="flex h-full w-full cursor-pointer items-center justify-center border-l-[0.5px] border-paradigm"
+              >
+                {sortMetric === "favorites" && <StarIcon />}
+                {sortMetric === "upvotes" && <ThickUp />}
+                {sortMetric === "downvotes" && <ThickDown />}
+                {sortMetric === "comments" && <ChatBubbleIcon />}
+              </button>
+            </HoverTooltip>
+            <HoverTooltip label={`Sort ${sortDir === "asc" ? "ascending" : "descending"}`}>
+              <button
+                type="button"
+                onClick={() => {
+                  const next = sortDir === "asc" ? "desc" : "asc";
+                  setSortDir(next);
+                  setLastAction({ icon: <UpdateIcon />, text: `SORTING ${next === "asc" ? "ASCENDING" : "DESCENDING"}` });
+                }}
+                className="flex h-full w-full cursor-pointer items-center justify-center border-l-[0.5px] border-paradigm"
+              >
+                {sortDir === "asc" ? <SortAscIcon /> : <SortDescIcon />}
+              </button>
+            </HoverTooltip>
+            <HoverTooltip label={typeFilter === "all" ? "Showing all types" : `Showing ${typeFilter}s only`}>
+              <button
+                type="button"
+                onClick={() => {
+                  const order: ("all" | ItemType)[] = ["all", "Snack", "Drink"];
+                  const next = order[(order.indexOf(typeFilter) + 1) % order.length];
+                  setTypeFilter(next);
+                  setLastAction({ icon: <UpdateIcon />, text: next === "all" ? "SHOWING ALL TYPES" : `FILTERING TO ${next.toUpperCase()}S` });
+                }}
+                className="flex h-full w-full cursor-pointer items-center justify-center gap-1 border-l-[0.5px] border-paradigm"
+              >
+                {typeFilter === "all" ? (
+                  <span className="font-semi-mono text-[10px] uppercase">All</span>
+                ) : typeFilter === "Snack" ? (
+                  <CookieIcon />
+                ) : (
+                  <DrinkIcon className="h-[15px] w-[15px]" />
+                )}
+              </button>
+            </HoverTooltip>
+          </div>
+        </div>
+        {(() => {
+          const q = searchQuery.trim().toLowerCase();
+          const metricValue = (i: number) => {
+            if (sortMetric === "favorites") return userVotes[i]?.length ?? 0;
+            if (sortMetric === "upvotes") return items[i].votes.up;
+            if (sortMetric === "downvotes") return items[i].votes.down;
+            return comments[i]?.length ?? 0;
+          };
+          const visible = items
+            .map((item, i) => ({ item, i }))
+            .filter(({ item }) => !q || item.name.toLowerCase().includes(q) || item.type.toLowerCase().includes(q))
+            .filter(({ item }) => typeFilter === "all" || item.type === typeFilter)
+            .sort((a, b) => {
+              const diff = metricValue(a.i) - metricValue(b.i);
+              return sortDir === "asc" ? diff : -diff;
+            });
+          const padCount = visible.length % 4 === 0 ? 0 : 4 - (visible.length % 4);
+          return (
         <div className="grid grid-cols-4 border-b-[0.5px] border-r-[0.5px] border-paradigm">
-          {items.map((item, i) => (
+          {visible.map(({ item, i }) => (
             <HoverTooltip
               key={i}
               data-snack-cell
@@ -623,7 +778,12 @@ export default function Home() {
               </div>
             </HoverTooltip>
           ))}
+          {Array.from({ length: padCount }).map((_, k) => (
+            <div key={`pad-${k}`} aria-hidden="true" className="border-t-[0.5px] border-l-[0.5px] border-paradigm" />
+          ))}
         </div>
+          );
+        })()}
       </div>
       <aside className="relative w-1/4">
         <div

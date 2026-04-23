@@ -33,6 +33,25 @@
   --font-grotesk: "ABC Monument Grotesk", ui-sans-serif, system-ui, sans-serif;
   --font-semi-mono: "ABC Monument Grotesk Semi-Mono", ui-monospace, monospace;
   --font-mono: "ABC Monument Grotesk Mono", ui-monospace, monospace;
+  --font-gaisyr: "ABC Gaisyr", ui-serif, serif;
+}
+
+@font-face {
+  font-family: "ABC Gaisyr";
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+  src: url("/fonts/ABCGaisyr-Regular-Trial.woff2") format("woff2"),
+       url("/fonts/ABCGaisyr-Regular-Trial.woff") format("woff");
+}
+
+@font-face {
+  font-family: "ABC Gaisyr";
+  font-weight: 400;
+  font-style: italic;
+  font-display: swap;
+  src: url("/fonts/ABCGaisyr-RegularItalic-Trial.woff2") format("woff2"),
+       url("/fonts/ABCGaisyr-RegularItalic-Trial.woff") format("woff");
 }
 
 @font-face {

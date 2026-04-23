@@ -209,6 +209,7 @@ const items: Item[] = [
 export default function Home() {
   const [mode, setMode] = useState<Mode>("SELECT");
   const [hungerGames, setHungerGames] = useState(false);
+  const [authed, setAuthed] = useState(false);
   const [selected, setSelected] = useState<number | null>(null);
   const [lastAction, setLastAction] = useState<{ icon: React.ReactNode; text: string } | null>(null);
   const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
@@ -445,7 +446,7 @@ export default function Home() {
   }
   return (
     <main className="flex flex-1 flex-col">
-      <header ref={headerRef} className="sticky top-0 z-20 flex items-center justify-between border-b-[0.5px] border-paradigm bg-white px-4 py-3">
+      <header ref={headerRef} className="sticky top-0 z-20 flex items-center justify-between border-b border-paradigm bg-white px-4 py-3">
         <div className="flex items-center gap-1">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
@@ -472,7 +473,7 @@ export default function Home() {
         {lastAction && (
           <Action icon={lastAction.icon} text={lastAction.text} />
         )}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 mr-1">
           <HoverTooltip label="View snacks, their comments and vote ratio">
             <DashedButton
               active={mode === "SELECT"}
@@ -497,10 +498,28 @@ export default function Home() {
               Comment <span className="opacity-60">[C]</span>
             </DashedButton>
           </HoverTooltip>
+          <HoverTooltip label={authed ? "Authenticated with Telegram" : "Sign in with Telegram"}>
+            <button
+              type="button"
+              onClick={() => setAuthed((v) => !v)}
+              aria-label={authed ? "Authenticated" : "Not authenticated"}
+              className={`relative flex h-[26px] w-[26px] cursor-pointer items-center justify-center ${authed ? "" : "marching-border"}`}
+            >
+              {authed ? (
+                <span className="pointer-events-none absolute inset-0 border border-paradigm" />
+              ) : (
+                <svg className="pointer-events-none absolute inset-0 h-full w-full text-[#ff3b30]" preserveAspectRatio="none" aria-hidden="true">
+                  <rect x="0.5" y="0.5" width="calc(100% - 1px)" height="calc(100% - 1px)" fill="none" stroke="currentColor" strokeWidth="1" />
+                </svg>
+              )}
+              <span className={`h-[12px] w-[12px] ${authed ? "bg-paradigm" : "bg-[#ff3b30]"}`} />
+            </button>
+          </HoverTooltip>
         </div>
       </header>
       <div className="flex flex-1">
       <div className="w-3/4">
+        <div aria-hidden="true" className="h-20 border-r-[0.5px] border-b-[0.5px] border-paradigm" />
         <div className="grid grid-cols-4 border-b-[0.5px] border-r-[0.5px] border-paradigm">
           {items.map((item, i) => (
             <HoverTooltip
@@ -605,9 +624,8 @@ export default function Home() {
             </HoverTooltip>
           ))}
         </div>
-        <div aria-hidden="true" className="h-20" />
       </div>
-      <aside className="relative w-1/4 border-l-[0.5px] border-paradigm">
+      <aside className="relative w-1/4">
         <div
           style={{ top: headerH, height: `calc(100vh - ${headerH}px)` }}
           className={`sticky flex flex-col overflow-hidden px-5 py-8 transition-colors duration-300 ease-in-out ${
@@ -798,7 +816,7 @@ export default function Home() {
         </div>
       </aside>
       </div>
-      <footer aria-hidden="true" className="h-40 border-t-[0.5px] border-paradigm" />
+      <footer aria-hidden="true" className="h-40" />
       {mode === "VOTE" && <VoteCursor />}
       {mode === "COMMENT" && !commentTarget && <CommentCursor />}
       {commentTarget && (

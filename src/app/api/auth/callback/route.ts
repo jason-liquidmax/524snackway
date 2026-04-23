@@ -41,9 +41,8 @@ async function logEvent(
 
 export async function POST(req: NextRequest) {
   const botToken = process.env.TELEGRAM_BOT_TOKEN;
-  const serverSecret = process.env.SERVER_SECRET;
-  const sessionSecret = process.env.SESSION_SECRET;
-  if (!botToken || !serverSecret || !sessionSecret) {
+  const appSecret = process.env.APP_SECRET;
+  if (!botToken || !appSecret) {
     return NextResponse.json({ error: "server_misconfigured" }, { status: 500 });
   }
 
@@ -57,7 +56,7 @@ export async function POST(req: NextRequest) {
   const sb = supabaseAdmin();
   const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null;
   const userAgent = req.headers.get("user-agent");
-  const hashFp = fingerprint(payload.hash ?? "", serverSecret);
+  const hashFp = fingerprint(payload.hash ?? "", appSecret);
   const authDate = new Date((payload.auth_date ?? 0) * 1000);
 
   // 1. CSRF: redeem the intent cookie before doing any expensive work.
@@ -67,7 +66,7 @@ export async function POST(req: NextRequest) {
     await logEvent(sb, { userId: null, telegramId: payload.id ?? 0, authDate, hashFingerprint: hashFp, ip, userAgent, outcome: "rejected_csrf" });
     return NextResponse.json({ error: "missing_intent" }, { status: 400 });
   }
-  const intentFp = fingerprint(Buffer.from(intentRaw, "base64url"), serverSecret);
+  const intentFp = fingerprint(Buffer.from(intentRaw, "base64url"), appSecret);
   const fpHex = `\\x${intentFp.toString("hex")}`;
 
   const { data: intentRow, error: intentErr } = await sb
@@ -146,7 +145,8 @@ export async function POST(req: NextRequest) {
       .eq("user_id", userId);
     await sb.from("users").update({ last_seen_at: new Date().toISOString() }).eq("id", userId);
   } else {
-    const fallbackName = payload.username ?? [payload.first_name, payload.last_name].filter(Boolean).join(" ") || null;
+    const composed = [payload.first_name, payload.last_name].filter(Boolean).join(" ");
+    const fallbackName = payload.username ?? (composed.length > 0 ? composed : null);
     const { data: createdUser, error: userErr } = await sb
       .from("users")
       .insert({ display_name: fallbackName })
@@ -172,7 +172,7 @@ export async function POST(req: NextRequest) {
   await logEvent(sb, { userId, telegramId: payload.id, authDate, hashFingerprint: hashFp, ip, userAgent, outcome });
 
   // 5. Mint the session cookie.
-  const token = signSession(userId, sessionSecret);
+  const token = signSession(userId, appSecret);
   jar.set(SESSION_COOKIE, token, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",

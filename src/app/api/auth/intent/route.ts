@@ -8,11 +8,11 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST() {
-  const serverSecret = process.env.SERVER_SECRET;
-  if (!serverSecret) return NextResponse.json({ error: "server_misconfigured" }, { status: 500 });
+  const appSecret = process.env.APP_SECRET;
+  if (!appSecret) return NextResponse.json({ error: "server_misconfigured" }, { status: 500 });
 
   const { raw, bytes } = generateNonce();
-  const fp = fingerprint(bytes, serverSecret);
+  const fp = fingerprint(bytes, appSecret);
   const expiresAt = new Date(Date.now() + intentCookieMaxAge() * 1000);
 
   const sb = supabaseAdmin();

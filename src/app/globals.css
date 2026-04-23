@@ -1,8 +1,81 @@
 @import "tailwindcss";
 
+@keyframes march {
+  to {
+    stroke-dashoffset: -16;
+  }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.fade-in {
+  animation: fadeIn 0.3s ease-in-out;
+}
+
+.dashed-btn rect {
+  stroke-dasharray: 4 4;
+}
+.dashed-btn:hover rect {
+  animation: march 0.6s linear infinite;
+}
+.marching-border rect {
+  stroke-dasharray: 6 6;
+  animation: march 0.8s linear infinite;
+}
+
 @theme inline {
   --color-paradigm: #00e100;
+  --color-inactive: #b8b8b8;
   --color-black: #000000;
   --color-white: #ffffff;
-  --font-mono: var(--font-geist-mono);
+  --font-grotesk: "ABC Monument Grotesk", ui-sans-serif, system-ui, sans-serif;
+  --font-semi-mono: "ABC Monument Grotesk Semi-Mono", ui-monospace, monospace;
+  --font-mono: "ABC Monument Grotesk Mono", ui-monospace, monospace;
+}
+
+@font-face {
+  font-family: "ABC Monument Grotesk";
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+  src: url("/fonts/ABCMonumentGrotesk-Regular.woff2") format("woff2"),
+       url("/fonts/ABCMonumentGrotesk-Regular.woff") format("woff");
+}
+
+@font-face {
+  font-family: "ABC Monument Grotesk";
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+  src: url("/fonts/ABCMonumentGrotesk-Medium.woff2") format("woff2"),
+       url("/fonts/ABCMonumentGrotesk-Medium.woff") format("woff");
+}
+
+@font-face {
+  font-family: "ABC Monument Grotesk Semi-Mono";
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+  src: url("/fonts/ABCMonumentGroteskSemiMono-Regular.woff2") format("woff2"),
+       url("/fonts/ABCMonumentGroteskSemiMono-Regular.woff") format("woff");
+}
+
+@font-face {
+  font-family: "ABC Monument Grotesk Mono";
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+  src: url("/fonts/ABCMonumentGroteskMono-Regular.woff2") format("woff2"),
+       url("/fonts/ABCMonumentGroteskMono-Regular.woff") format("woff");
+}
+
+@font-face {
+  font-family: "ABC Monument Grotesk Mono";
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+  src: url("/fonts/ABCMonumentGroteskMono-Medium.woff2") format("woff2"),
+       url("/fonts/ABCMonumentGroteskMono-Medium.woff") format("woff");
 }

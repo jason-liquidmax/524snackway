@@ -27,13 +27,11 @@ CREATE TABLE users (
 
 -- ---------------------------------------------------------------------------
 -- Linked Telegram accounts — OAuth-style link from an existing user to a
--- Telegram identity. One Telegram account links to at most one user, and
--- one user has at most one Telegram link (drop the user_id UNIQUE if you
--- ever want to allow multiple Telegrams per user).
+-- Telegram identity via the Telegram Login Widget. One Telegram account
+-- links to at most one user, and one user has at most one Telegram link.
 --
 -- Field shapes follow the Login Widget callback
--- (https://core.telegram.org/widgets/login) and Mini Apps initData.user
--- (https://core.telegram.org/bots/webapps).
+-- (https://core.telegram.org/widgets/login).
 -- ---------------------------------------------------------------------------
 
 CREATE TABLE linked_telegram_accounts (
@@ -43,8 +41,6 @@ CREATE TABLE linked_telegram_accounts (
   first_name       TEXT,
   last_name        TEXT,
   photo_url        TEXT,
-  language_code    TEXT,
-  is_premium       BOOLEAN     NOT NULL DEFAULT FALSE,
   linked_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   last_verified_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -52,32 +48,64 @@ CREATE TABLE linked_telegram_accounts (
 CREATE INDEX linked_telegram_accounts_username_idx ON linked_telegram_accounts (username);
 
 -- ---------------------------------------------------------------------------
--- Telegram auth events — one row per successful hash verification (link or
--- re-login). Source distinguishes the HMAC derivation used:
---   login_widget: secret_key = SHA256(bot_token);
---                 hash = HMAC_SHA256(data_check_string, secret_key)
---   mini_app:     secret_key = HMAC_SHA256(bot_token, "WebAppData");
---                 hash = HMAC_SHA256(data_check_string, secret_key)
--- (telegram_id, hash) UNIQUE prevents replay of a captured payload.
--- The Login Widget freshness window is 2h; enforce in app code, not schema.
+-- Telegram auth intents — server-issued, single-use, short-lived nonces.
+-- Telegram is the *only* auth provider, so the nonce binds the auth attempt
+-- to a specific browser via an HttpOnly cookie (no pre-existing user yet on
+-- first sign-in). Defends against session-fixation: an attacker can't trick a
+-- victim into completing a Telegram auth bound to the attacker's browser.
+--
+-- Flow:
+--   1. User clicks "Sign in with Telegram" -> server generates 256-bit nonce,
+--      stores HMAC(nonce) here with 5-min expiry, sets HttpOnly cookie with
+--      the raw nonce. Cookie is the proof-of-possession.
+--   2. Telegram popup returns payload to client; client POSTs payload to
+--      /api/auth/callback (cookie sent automatically).
+--   3. Server: HMAC(cookie nonce) -> lookup row, check not expired/consumed,
+--      mark consumed_at, then verify the Telegram HMAC against bot_token.
+-- Stored fingerprint (not raw nonce) so a DB read never yields a usable token.
 -- ---------------------------------------------------------------------------
 
-CREATE TYPE telegram_auth_source AS ENUM ('login_widget', 'mini_app');
+CREATE TABLE telegram_auth_intents (
+  nonce_fingerprint BYTEA       PRIMARY KEY,    -- HMAC_SHA256(nonce, server_secret)
+  created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  expires_at        TIMESTAMPTZ NOT NULL,
+  consumed_at       TIMESTAMPTZ,
+  CHECK (expires_at > created_at)
+);
+
+CREATE INDEX telegram_auth_intents_expiry_idx ON telegram_auth_intents (expires_at);
+
+-- ---------------------------------------------------------------------------
+-- Telegram auth events — one row per successful Login Widget hash
+-- verification (link or re-login). HMAC derivation:
+--   secret_key = SHA256(bot_token)
+--   hash       = HMAC_SHA256(data_check_string, secret_key)
+--
+-- We store only HMAC(hash, server_secret) — never the verified Telegram hash
+-- itself, which is sensitive material that could be probed offline against
+-- known bot-token candidates. The fingerprint is enough for replay detection
+-- via UNIQUE (telegram_id, hash_fingerprint).
+--
+-- Login Widget freshness window is 2h; enforce in app code, not schema.
+-- Retention: delete rows older than 90 days unless flagged for forensics.
+-- ---------------------------------------------------------------------------
 
 CREATE TABLE telegram_auth_events (
-  id          BIGSERIAL            PRIMARY KEY,
-  user_id     BIGINT               REFERENCES users(id) ON DELETE CASCADE,
-  telegram_id BIGINT               NOT NULL,
-  source      telegram_auth_source NOT NULL,
-  auth_date   TIMESTAMPTZ          NOT NULL,
-  hash        TEXT                 NOT NULL,
-  query_id    TEXT,
-  raw_payload JSONB                NOT NULL,
-  created_at  TIMESTAMPTZ          NOT NULL DEFAULT NOW(),
-  UNIQUE (telegram_id, hash)
+  id               BIGSERIAL   PRIMARY KEY,
+  user_id          BIGINT      REFERENCES users(id) ON DELETE SET NULL,
+  telegram_id      BIGINT      NOT NULL,
+  auth_date        TIMESTAMPTZ NOT NULL,
+  hash_fingerprint BYTEA       NOT NULL,
+  ip_inet          INET,
+  user_agent       TEXT,
+  outcome          TEXT        NOT NULL CHECK (outcome IN ('linked','relogin','rejected_replay','rejected_csrf','rejected_stale')),
+  created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (telegram_id, hash_fingerprint)
 );
 
 CREATE INDEX telegram_auth_events_user_idx ON telegram_auth_events (user_id, created_at DESC);
+CREATE INDEX telegram_auth_events_tg_idx   ON telegram_auth_events (telegram_id, created_at DESC);
+CREATE INDEX telegram_auth_events_ip_idx   ON telegram_auth_events (ip_inet, created_at DESC);
 
 -- ---------------------------------------------------------------------------
 -- Locations — multi-tenant ready; ships with one row for 524 Snackway.

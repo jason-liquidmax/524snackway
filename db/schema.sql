@@ -12,54 +12,53 @@ CREATE TYPE item_type      AS ENUM ('snack', 'drink');
 CREATE TYPE vote_direction AS ENUM ('up', 'down');
 
 -- ---------------------------------------------------------------------------
--- Users — synthetic PK so we can layer auth providers (Telegram primary,
--- wallet optional). telegram_id is the canonical Telegram identity.
---
--- Field shapes match the Telegram Login Widget callback
--- (https://core.telegram.org/widgets/login) and the Mini Apps initData.user
--- object (https://core.telegram.org/bots/webapps):
---   id (long)         -> telegram_id BIGINT
---   first_name        -> telegram_first_name (always present)
---   last_name         -> telegram_last_name  (optional)
---   username          -> telegram_username   (optional; not all users have one)
---   photo_url         -> telegram_photo_url  (optional)
---   language_code     -> telegram_language_code (Mini Apps only)
---   is_premium        -> telegram_is_premium    (Mini Apps only)
---   auth_date (unix)  -> telegram_auth_date     (most recent verified login)
+-- Users — primary application identity. Telegram (and any future provider) is
+-- a *linked* account, not the identity itself.
 -- ---------------------------------------------------------------------------
 
 CREATE TABLE users (
-  id                     BIGSERIAL   PRIMARY KEY,
-
-  telegram_id            BIGINT      UNIQUE,
-  telegram_username      TEXT,
-  telegram_first_name    TEXT,
-  telegram_last_name     TEXT,
-  telegram_photo_url     TEXT,
-  telegram_language_code TEXT,
-  telegram_is_premium    BOOLEAN     NOT NULL DEFAULT FALSE,
-  telegram_auth_date     TIMESTAMPTZ,
-
-  wallet_address         TEXT        UNIQUE
-                         CHECK (wallet_address IS NULL OR wallet_address ~ '^0x[0-9a-f]{40}$'),
-
-  display_name           TEXT,
-  created_at             TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  last_seen_at           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-
-  CONSTRAINT users_has_identity CHECK (telegram_id IS NOT NULL OR wallet_address IS NOT NULL)
+  id             BIGSERIAL   PRIMARY KEY,
+  wallet_address TEXT        UNIQUE
+                 CHECK (wallet_address IS NULL OR wallet_address ~ '^0x[0-9a-f]{40}$'),
+  display_name   TEXT,
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  last_seen_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX users_telegram_username_idx ON users (telegram_username);
+-- ---------------------------------------------------------------------------
+-- Linked Telegram accounts — OAuth-style link from an existing user to a
+-- Telegram identity. One Telegram account links to at most one user, and
+-- one user has at most one Telegram link (drop the user_id UNIQUE if you
+-- ever want to allow multiple Telegrams per user).
+--
+-- Field shapes follow the Login Widget callback
+-- (https://core.telegram.org/widgets/login) and Mini Apps initData.user
+-- (https://core.telegram.org/bots/webapps).
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE linked_telegram_accounts (
+  user_id          BIGINT      PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  telegram_id      BIGINT      UNIQUE NOT NULL,
+  username         TEXT,
+  first_name       TEXT,
+  last_name        TEXT,
+  photo_url        TEXT,
+  language_code    TEXT,
+  is_premium       BOOLEAN     NOT NULL DEFAULT FALSE,
+  linked_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  last_verified_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX linked_telegram_accounts_username_idx ON linked_telegram_accounts (username);
 
 -- ---------------------------------------------------------------------------
--- Telegram auth events — one row per successful hash verification.
--- Source distinguishes the two flavors because their HMAC derivations differ:
+-- Telegram auth events — one row per successful hash verification (link or
+-- re-login). Source distinguishes the HMAC derivation used:
 --   login_widget: secret_key = SHA256(bot_token);
 --                 hash = HMAC_SHA256(data_check_string, secret_key)
 --   mini_app:     secret_key = HMAC_SHA256(bot_token, "WebAppData");
 --                 hash = HMAC_SHA256(data_check_string, secret_key)
--- The (telegram_id, hash) UNIQUE prevents replaying a captured payload.
+-- (telegram_id, hash) UNIQUE prevents replay of a captured payload.
 -- The Login Widget freshness window is 2h; enforce in app code, not schema.
 -- ---------------------------------------------------------------------------
 
@@ -67,13 +66,13 @@ CREATE TYPE telegram_auth_source AS ENUM ('login_widget', 'mini_app');
 
 CREATE TABLE telegram_auth_events (
   id          BIGSERIAL            PRIMARY KEY,
-  user_id     BIGINT               NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  user_id     BIGINT               REFERENCES users(id) ON DELETE CASCADE,
   telegram_id BIGINT               NOT NULL,
   source      telegram_auth_source NOT NULL,
   auth_date   TIMESTAMPTZ          NOT NULL,
   hash        TEXT                 NOT NULL,
-  query_id    TEXT,                                 -- mini_app only
-  raw_payload JSONB                NOT NULL,        -- audit trail of verified fields
+  query_id    TEXT,
+  raw_payload JSONB                NOT NULL,
   created_at  TIMESTAMPTZ          NOT NULL DEFAULT NOW(),
   UNIQUE (telegram_id, hash)
 );
